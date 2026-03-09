@@ -9,10 +9,12 @@ services:
       HOME: /home/node
       TERM: xterm-256color
       TZ: Asia/Shanghai
-      HTTP_PROXY: http://127.0.0.1:10991
-      HTTPS_PROXY: http://127.0.0.1:10991
-      http_proxy: http://127.0.0.1:10991
-      https_proxy: http://127.0.0.1:10991
+      HTTP_PROXY: http://100.100.100.10:10991
+      HTTPS_PROXY: http://100.100.100.10:10991
+      http_proxy: http://100.100.100.10:10991
+      https_proxy: http://100.100.100.10:10991
+      NO_PROXY: 127.0.0.1,localhost,host.docker.internal,100.100.100.102,100.100.100.10
+      no_proxy: 127.0.0.1,localhost,host.docker.internal,100.100.100.102,100.100.100.10
     volumes:
       - /opt/openclaw/data/conf:/home/node/.openclaw
       - /opt/openclaw/data/workspace:/home/node/.openclaw/workspace
