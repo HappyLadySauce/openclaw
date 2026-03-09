@@ -1591,7 +1591,12 @@ export function createWebSearchTool(options?: {
         });
       }
       const language = readStringParam(params, "language");
-      if (language && provider !== "brave" && provider !== "perplexity") {
+      if (
+        language &&
+        provider !== "brave" &&
+        provider !== "perplexity" &&
+        provider !== "duckduckgo"
+      ) {
         return jsonResult({
           error: "unsupported_language",
           message: `language filtering is not supported by the ${provider} provider. Only Brave and Perplexity support language filtering.`,

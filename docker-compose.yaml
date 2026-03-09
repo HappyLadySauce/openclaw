@@ -9,6 +9,10 @@ services:
       HOME: /home/node
       TERM: xterm-256color
       TZ: Asia/Shanghai
+      HTTP_PROXY: http://127.0.0.1:10991
+      HTTPS_PROXY: http://127.0.0.1:10991
+      http_proxy: http://127.0.0.1:10991
+      https_proxy: http://127.0.0.1:10991
     volumes:
       - /opt/openclaw/data/conf:/home/node/.openclaw
       - /opt/openclaw/data/workspace:/home/node/.openclaw/workspace
