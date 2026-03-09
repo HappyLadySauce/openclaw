@@ -70,8 +70,8 @@ describe("web search provider auto-detection", () => {
     vi.restoreAllMocks();
   });
 
-  it("falls back to brave when no keys available", () => {
-    expect(resolveSearchProvider({})).toBe("brave");
+  it("falls back to duckduckgo when no keys available", () => {
+    expect(resolveSearchProvider({})).toBe("duckduckgo");
   });
 
   it("auto-detects brave when only BRAVE_API_KEY is set", () => {

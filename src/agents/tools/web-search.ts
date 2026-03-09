@@ -21,12 +21,13 @@ import {
   writeCache,
 } from "./web-shared.js";
 
-const SEARCH_PROVIDERS = ["brave", "perplexity", "grok", "gemini", "kimi"] as const;
+const SEARCH_PROVIDERS = ["brave", "perplexity", "grok", "gemini", "kimi", "duckduckgo"] as const;
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
 
 const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const PERPLEXITY_SEARCH_ENDPOINT = "https://api.perplexity.ai/search";
+const DUCKDUCKGO_HTML_ENDPOINT = "https://html.duckduckgo.com/html/";
 
 const XAI_API_ENDPOINT = "https://api.x.ai/v1/responses";
 const DEFAULT_GROK_MODEL = "grok-4-1-fast";
@@ -185,6 +186,13 @@ type BraveSearchResponse = {
   web?: {
     results?: BraveSearchResult[];
   };
+};
+
+type DuckDuckGoSearchResult = {
+  title: string;
+  url: string;
+  description: string;
+  siteName?: string;
 };
 
 type PerplexityConfig = {
@@ -415,6 +423,14 @@ function missingSearchKeyPayload(provider: (typeof SEARCH_PROVIDERS)[number]) {
       docs: "https://docs.openclaw.ai/tools/web",
     };
   }
+  if (provider === "duckduckgo") {
+    return {
+      error: "duckduckgo_no_key_required",
+      message:
+        "DuckDuckGo does not require an API key. Set tools.web.search.provider to 'duckduckgo' and omit apiKey.",
+      docs: "https://docs.openclaw.ai/tools/web",
+    };
+  }
   return {
     error: "missing_brave_api_key",
     message: `web_search needs a Brave Search API key. Run \`${formatCliCommand("openclaw configure --section web")}\` to store it, or set BRAVE_API_KEY in the Gateway environment.`,
@@ -438,6 +454,9 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
   }
   if (raw === "kimi") {
     return "kimi";
+  }
+  if (raw === "duckduckgo" || raw === "ddg") {
+    return "duckduckgo";
   }
   if (raw === "brave") {
     return "brave";
@@ -485,6 +504,9 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
       );
       return "grok";
     }
+    // 6. No keys: use DuckDuckGo (free, no API key)
+    logVerbose('web_search: no provider configured, no API keys found, defaulting to "duckduckgo"');
+    return "duckduckgo";
   }
 
   return "brave";
@@ -847,6 +869,94 @@ function resolveSiteName(url: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+// DuckDuckGo HTML result layout; parser may need updates if DDG changes their page structure.
+function parseDuckDuckGoHtml(html: string): DuckDuckGoSearchResult[] {
+  const results: DuckDuckGoSearchResult[] = [];
+  const linkRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi;
+  const snippetRegex = /<a[^>]*class="result__snippet"[^>]*>([^<]*(?:<[^>]*>[^<]*)*)<\/a>/gi;
+
+  const links: { url: string; title: string }[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = linkRegex.exec(html)) !== null) {
+    let url = match[1] ?? "";
+    const title = (match[2] ?? "").trim();
+    if (url.includes("uddg=")) {
+      try {
+        const parsed = new URL(url, "https://duckduckgo.com");
+        const realUrl = parsed.searchParams.get("uddg");
+        if (realUrl) {
+          url = decodeURIComponent(realUrl);
+        }
+      } catch {
+        // keep original URL if parsing fails
+      }
+    }
+    if (url && title && url.startsWith("http")) {
+      links.push({ url, title });
+    }
+  }
+
+  const snippets: string[] = [];
+  while ((match = snippetRegex.exec(html)) !== null) {
+    const snippet = (match[1] ?? "").replace(/<[^>]*>/g, "").trim();
+    snippets.push(snippet);
+  }
+
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
+    if (!link) {
+      continue;
+    }
+    results.push({
+      title: link.title,
+      url: link.url,
+      description: snippets[i] ?? "",
+      siteName: resolveSiteName(link.url) || undefined,
+    });
+  }
+  return results;
+}
+
+async function runDuckDuckGoSearch(params: {
+  query: string;
+  count: number;
+  timeoutSeconds: number;
+}): Promise<DuckDuckGoSearchResult[]> {
+  const body = new URLSearchParams({ q: params.query }).toString();
+  const html = await withTrustedWebSearchEndpoint(
+    {
+      url: DUCKDUCKGO_HTML_ENDPOINT,
+      timeoutSeconds: params.timeoutSeconds,
+      init: {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          Accept: "text/html",
+        },
+        body,
+      },
+    },
+    async (res) => {
+      if (!res.ok) {
+        return await throwWebSearchApiError(res, "DuckDuckGo");
+      }
+      const result = await readResponseText(res, { maxBytes: 2 * 1024 * 1024 });
+      return result.text ?? "";
+    },
+  );
+
+  const allResults = parseDuckDuckGoHtml(html);
+  if (allResults.length === 0 && html.includes("<title>") && !html.includes("at DuckDuckGo")) {
+    throw new Error(
+      "DuckDuckGo returned homepage instead of search results (possible anti-bot detection)",
+    );
+  }
+  return allResults.slice(0, params.count);
 }
 
 async function throwWebSearchApiError(res: Response, providerLabel: string): Promise<never> {
@@ -1304,6 +1414,35 @@ async function runWebSearch(params: {
     return payload;
   }
 
+  if (params.provider === "duckduckgo") {
+    const ddgResults = await runDuckDuckGoSearch({
+      query: params.query,
+      count: params.count,
+      timeoutSeconds: params.timeoutSeconds,
+    });
+    const results = ddgResults.map((r) => ({
+      title: r.title ? wrapWebContent(r.title, "web_search") : "",
+      url: r.url,
+      description: r.description ? wrapWebContent(r.description, "web_search") : "",
+      siteName: r.siteName,
+    }));
+    const payload = {
+      query: params.query,
+      provider: params.provider,
+      count: results.length,
+      tookMs: Date.now() - start,
+      externalContent: {
+        untrusted: true,
+        source: "web_search",
+        provider: params.provider,
+        wrapped: true,
+      },
+      results,
+    };
+    writeCache(SEARCH_CACHE, cacheKey, payload, params.cacheTtlMs);
+    return payload;
+  }
+
   if (params.provider !== "brave") {
     throw new Error("Unsupported web search provider.");
   }
@@ -1411,7 +1550,9 @@ export function createWebSearchTool(options?: {
           ? "Search the web using Kimi by Moonshot. Returns AI-synthesized answers with citations from native $web_search."
           : provider === "gemini"
             ? "Search the web using Gemini with Google Search grounding. Returns AI-synthesized answers with citations from Google Search."
-            : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
+            : provider === "duckduckgo"
+              ? "Search the web using DuckDuckGo. Free search without API key. Returns titles, URLs, and snippets."
+              : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
 
   return {
     label: "Web Search",
@@ -1430,9 +1571,11 @@ export function createWebSearchTool(options?: {
               ? resolveKimiApiKey(kimiConfig)
               : provider === "gemini"
                 ? resolveGeminiApiKey(geminiConfig)
-                : resolveSearchApiKey(search);
+                : provider === "duckduckgo"
+                  ? ""
+                  : resolveSearchApiKey(search);
 
-      if (!apiKey) {
+      if (!apiKey && provider !== "duckduckgo") {
         return jsonResult(missingSearchKeyPayload(provider));
       }
       const params = args as Record<string, unknown>;

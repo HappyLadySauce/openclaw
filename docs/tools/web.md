@@ -1,9 +1,10 @@
 ---
-summary: "Web search + fetch tools (Perplexity Search API, Brave, Gemini, Grok, and Kimi providers)"
+summary: "Web search + fetch tools (Perplexity, Brave, Gemini, Grok, Kimi, DuckDuckGo)"
 read_when:
   - You want to enable web_search or web_fetch
   - You need Perplexity or Brave Search API key setup
   - You want to use Gemini with Google Search grounding
+  - You want free web search without an API key (DuckDuckGo)
 title: "Web Tools"
 ---
 
@@ -11,7 +12,7 @@ title: "Web Tools"
 
 OpenClaw ships two lightweight web tools:
 
-- `web_search` — Search the web using Perplexity Search API, Brave Search API, Gemini with Google Search grounding, Grok, or Kimi.
+- `web_search` — Search the web using Perplexity Search API, Brave Search API, Gemini with Google Search grounding, Grok, Kimi, or DuckDuckGo (free, no API key).
 - `web_fetch` — HTTP fetch + readable extraction (HTML → markdown/text).
 
 These are **not** browser automation. For JS-heavy sites or logins, use the
@@ -29,13 +30,14 @@ See [Perplexity Search setup](/perplexity) and [Brave Search setup](/brave-searc
 
 ## Choosing a search provider
 
-| Provider                  | Pros                                                                                          | Cons                                        | API Key                             |
-| ------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------- |
-| **Perplexity Search API** | Fast, structured results; domain, language, region, and freshness filters; content extraction | —                                           | `PERPLEXITY_API_KEY`                |
-| **Brave Search API**      | Fast, structured results                                                                      | Fewer filtering options; AI-use terms apply | `BRAVE_API_KEY`                     |
-| **Gemini**                | Google Search grounding, AI-synthesized                                                       | Requires Gemini API key                     | `GEMINI_API_KEY`                    |
-| **Grok**                  | xAI web-grounded responses                                                                    | Requires xAI API key                        | `XAI_API_KEY`                       |
-| **Kimi**                  | Moonshot web search capability                                                                | Requires Moonshot API key                   | `KIMI_API_KEY` / `MOONSHOT_API_KEY` |
+| Provider                  | Pros                                                                                          | Cons                                                                                   | API Key                             |
+| ------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------- |
+| **Perplexity Search API** | Fast, structured results; domain, language, region, and freshness filters; content extraction | —                                                                                      | `PERPLEXITY_API_KEY`                |
+| **Brave Search API**      | Fast, structured results                                                                      | Fewer filtering options; AI-use terms apply                                            | `BRAVE_API_KEY`                     |
+| **Gemini**                | Google Search grounding, AI-synthesized                                                       | Requires Gemini API key                                                                | `GEMINI_API_KEY`                    |
+| **Grok**                  | xAI web-grounded responses                                                                    | Requires xAI API key                                                                   | `XAI_API_KEY`                       |
+| **Kimi**                  | Moonshot web search capability                                                                | Requires Moonshot API key                                                              | `KIMI_API_KEY` / `MOONSHOT_API_KEY` |
+| **DuckDuckGo**            | Free; no API key or signup                                                                    | HTML scraping; no country/language/freshness filters; may hit anti-bot under heavy use | None                                |
 
 ### Auto-detection
 
@@ -46,8 +48,9 @@ If no `provider` is explicitly set, OpenClaw auto-detects which provider to use 
 3. **Kimi** — `KIMI_API_KEY` / `MOONSHOT_API_KEY` env var or `tools.web.search.kimi.apiKey` config
 4. **Perplexity** — `PERPLEXITY_API_KEY` env var or `tools.web.search.perplexity.apiKey` config
 5. **Grok** — `XAI_API_KEY` env var or `tools.web.search.grok.apiKey` config
+6. **DuckDuckGo** — If no keys are found, OpenClaw uses DuckDuckGo (no API key required).
 
-If no keys are found, it falls back to Brave (you'll get a missing-key error prompting you to configure one).
+You can also set `provider: "duckduckgo"` or `provider: "ddg"` explicitly to use DuckDuckGo regardless of other keys.
 
 ## Setting up web search
 
@@ -105,6 +108,21 @@ Brave provides paid plans; check the Brave API portal for the current limits and
         enabled: true,
         provider: "brave",
         apiKey: "BSA...", // optional if BRAVE_API_KEY is set
+      },
+    },
+  },
+}
+```
+
+**DuckDuckGo (no API key):**
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        enabled: true,
+        provider: "duckduckgo",
       },
     },
   },
